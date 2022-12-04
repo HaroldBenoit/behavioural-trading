@@ -38,7 +38,7 @@ def compute_trade_sign(events:pd.DataFrame):
 
     print("Percentage of unclassifiable trades", f"{((events.s == 0.0).sum()/ len(events))*100:.2f}%")
 
-    ## we need to resolve case where trade_price = mid_price (by using tick test described in the paper)following Lee's algo https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1991.tb02683.x
+    ## we need to resolve case where trade_price = mid_price (by using tick test described in the paper) following Lee's algo https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1991.tb02683.x
 
     #The tick test is a technique which infers the direction of a trade by-comparing its price to the price of the preceding trade(s).
     #The test classifies each trade into four categories: an uptick, a downtick, a zero-uptick, and a zero-downtick.
