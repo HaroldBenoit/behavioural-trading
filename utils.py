@@ -4,7 +4,7 @@ import numpy as np
 
 
 
-def compute_R(events,tau_max=1000,dtau=1):
+def compute_R(events: pd.DataFrame, tau_max=1000,dtau=1):
     taus=range(1,tau_max,dtau)
     R=[]
     R_plus=[]
@@ -14,6 +14,56 @@ def compute_R(events,tau_max=1000,dtau=1):
         R.append(np.nanmean(events["s"]*(events_mid_shifted-events["mid"])))
     return np.array(R)   
 
+
+
+from scipy.signal import convolve
+
+def compute_R_fast(events: pd.DataFrame, tau_max=1000):
+    #R definition is R(tau) = E[s_n(M_{n+tau} -M_n) ]
+
+    s = events["s"]
+    mid = events["mid"]
+
+    N=len(mid)
+
+
+    ## we can move out demeaning factor out of the response function equation
+    ## just need to make sure we have the right amount of corresponding s*mid in the expected value =>
+    ## need to use cumsum
+    ## need to be careful to reverse the order of the sum because for example
+    # the last term in mid will contribute only once (for the tau=0 computation)
+    # and the first term in mid will contribute to all computations
+
+    demean_const = np.cumsum((s*mid))[::-1]
+    ## number of terms used for each tau, to normalize correctly the expected value computation
+    division_const= np.array([i for i in range(1,N+1)])[::-1]
+
+
+    ## as we're taking the expected value, 
+    #the number of factors inside the expectation decreases linearly as the shift increases.
+    # The most extreme example being the biggest shift where only one element contributes
+
+    middle = N-1
+
+    ## need to reverse mid as we want cross-correlation and not convolution
+    conv = convolve(s,mid[::-1])
+
+    ## we want only want half of the convolution and in causal order, thus we take first half and reverse
+    conv = conv[:middle+1][::-1]
+
+    #print("conv",conv)
+    #print()
+    #print("s*mid ",s*mid)
+    #print()
+    #print("demean", demean_const)
+
+    response_function = (conv- demean_const)/division_const
+    #print()
+    #print("response", response_function)
+    
+    cutoff = min(len(response_function), tau_max)
+    
+    return np.array(response_function[:cutoff].values)
 
 
 
