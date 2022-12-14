@@ -36,6 +36,7 @@ if __name__ == "__main__":
             events = pd.concat(events)
 
             events = vaex.from_pandas(events, copy_index=True)
+            events = events[~events.trade_price.isnan()]
             dirSave = "data/clean/DOW/"
             fileSave =  dirSave + ticker + "-events" + ".arrow" 
             if not os.path.isdir(dirSave):

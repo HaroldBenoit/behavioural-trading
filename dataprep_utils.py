@@ -106,7 +106,7 @@ def load_TRTH_bbo(
 
     DF.index = pd.to_datetime(DF["xltime"], unit="d", origin="1899-12-30", utc=True)
     DF.index = DF.index.tz_convert(
-        tz_exchange
+        tz_exchange 
     )  # .P stands for Arca, which is based at New York
     DF.drop(columns="xltime", inplace=True)
 
