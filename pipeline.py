@@ -1,70 +1,14 @@
 import pandas as pd
+import pyarrow.parquet as pq
 import numpy as np
-from scipy.signal import convolve
+import matplotlib.pyplot as plt
+import vaex
+import dask
+#from utils import compute_trade_sign
 
-
-def compute_R(events, tau_max=1000, dtau=1):
-    taus = range(1, tau_max, dtau)
-    R = []
-    R_plus = []
-    R_minus = []
-    for tau in taus:
-        events_mid_shifted = events["mid"].shift(-tau)
-        R.append(np.nanmean(events["s"] * (events_mid_shifted - events["mid"])))
-    return np.array(R)
-
-
-
-
-def compute_R_fast(events: pd.DataFrame, tau_max=1000):
-    #R definition is R(tau) = E[s_n(M_{n+tau} -M_n) ]
-
-    s = events["s"]
-    mid = events["mid"]
-
-    N=len(mid)
-
-
-    ## we can move out demeaning factor out of the response function equation
-    ## just need to make sure we have the right amount of corresponding s*mid in the expected value =>
-    ## need to use cumsum
-    ## need to be careful to reverse the order of the sum because for example
-    # the last term in mid will contribute only once (for the tau=0 computation)
-    # and the first term in mid will contribute to all computations
-
-    demean_const = np.cumsum((s*mid))[::-1]
-    ## number of terms used for each tau, to normalize correctly the expected value computation
-    division_const= np.array([i for i in range(1,N+1)])[::-1]
-
-
-    ## as we're taking the expected value, 
-    #the number of factors inside the expectation decreases linearly as the shift increases.
-    # The most extreme example being the biggest shift where only one element contributes
-
-    middle = N-1
-
-    ## need to reverse mid as we want cross-correlation and not convolution
-    conv = convolve(s,mid[::-1])
-
-    ## we want only want half of the convolution and in causal order, thus we take first half and reverse
-    conv = conv[:middle+1][::-1]
-
-    #print("conv",conv)
-    #print()
-    #print("s*mid ",s*mid)
-    #print()
-    #print("demean", demean_const)
-
-    response_function = (conv- demean_const)/division_const
-    #print()
-    #print("response", response_function)
-    
-    cutoff = min(len(response_function), tau_max)
-    
-    return np.array(response_function[:cutoff].values)
-
-
-
+import glob
+from dask.distributed import Client
+import time
 
 def compute_trade_sign(events:pd.DataFrame):
     """ Computes the sign of a trade for each trade in a intraday trade dataframe. The sign of a trade represents whether the trade was buy-initiated or sell-initiated.
@@ -80,8 +24,11 @@ def compute_trade_sign(events:pd.DataFrame):
         _type_: intraday trade data with additional column "s", representing the sign of the trade
     """
 
-    events["mid"] = (events.bid + events.ask) * 0.5
-    events["s"] = np.sign(events["trade.price"] - events["mid"])
+    events["mid"] = (events["bid-price"] + events["ask-price"]) * 0.5
+    events = events.fillna(method="ffill").dropna()
+    events["s"] = events["trade_price"] - events["mid"]
+    #print(events["s"])
+    events["s"] = np.sign(events["s"])
 
     print(
         "Percentage of unclassifiable trades",
@@ -98,7 +45,7 @@ def compute_trade_sign(events:pd.DataFrame):
     # A trade is classified as a buy if it occurs on an uptick or a zero-uptick; otherwise it is classified as a sell.
 
     uptick = pd.Series(
-        (events["trade.price"].shift(-1) - events["trade.price"]).iloc[:-1].values,
+        (events["trade_price"].shift(-1) - events["trade_price"]).iloc[:-1].values,
         index=events.iloc[1:].index,
     )
 
@@ -122,3 +69,28 @@ def compute_trade_sign(events:pd.DataFrame):
     events.drop(columns=["uptick", "new_s"], inplace=True)
 
     return events
+
+@dask.delayed
+def load_and_compute_trade_sign(path):
+    df = vaex.open(path).to_pandas_df()
+    compute_trade_sign(df)
+
+if __name__ == "__main__":
+
+    client = Client(n_workers = 5, threads_per_worker=2)
+
+
+    datasets = glob.glob("data/clean/DOW/*")
+
+    print(len(datasets))
+    t1 = time.time()
+    print("Computing trade sign of", len(datasets), "datasets")
+    all_promises=[]
+    for dataset in datasets:
+        print("Processing",dataset)
+       
+        
+        all_promises.append(compute_trade_sign(df))
+    all_promises = client.compute(all_promises)
+    t2 = time.time()
+    print("Computation took", (t2-t1), "seconds")
