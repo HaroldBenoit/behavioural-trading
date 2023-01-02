@@ -148,8 +148,8 @@ def load_merge_trade_bbo(
         print("Couln't broadcast trade shapes to bbos")
         return None
 
-    events = trades.join(bbos, how="outer")
-
+    events = trades.join(bbos, how="left")
+ 
     if doSave:
         dirSave = dirSaveBase + "/" + country + "/events/" + ticker
         if not os.path.isdir(dirSave):

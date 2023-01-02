@@ -10,6 +10,7 @@ import glob
 from dask.distributed import Client
 import time
 
+
 def compute_trade_sign(events:pd.DataFrame):
     """ Computes the sign of a trade for each trade in a intraday trade dataframe. The sign of a trade represents whether the trade was buy-initiated or sell-initiated.
         Trade sign is defined as: 
@@ -24,6 +25,7 @@ def compute_trade_sign(events:pd.DataFrame):
         _type_: intraday trade data with additional column "s", representing the sign of the trade
     """
 
+ 
     events["mid"] = (events["bid-price"] + events["ask-price"]) * 0.5
     events = events.fillna(method="ffill").dropna()
     events["s"] = events["trade_price"] - events["mid"]
@@ -61,7 +63,8 @@ def compute_trade_sign(events:pd.DataFrame):
 
     ## applying the rule described above
     idx = events[(events.s == 0.0)].index
-    events["new_s"] = np.sign(events.loc[idx]["uptick"])
+    ## 2*int(False)-1 = -1 | 2*int(True)-1=1 
+    events["new_s"] = 2*(events.loc[idx]["uptick"].astype(int))-1
     events["new_s"] = events["new_s"].fillna(0.0)
     events["s"] = events["s"] + events["new_s"]
 
@@ -71,13 +74,17 @@ def compute_trade_sign(events:pd.DataFrame):
     return events
 
 @dask.delayed
-def load_and_compute_trade_sign(path):
+def load_and_compute_trade_sign(path, save = False):
     print("Processing",path)
     df = vaex.open(path).to_pandas_df()
     df = compute_trade_sign(df)
-    vaex.from_pandas(df, copy_index=True).export_arrow(path)
-    del df
-
+    if save:
+        path = path.replace("events","events_w_s")
+        print("Saving to ", path)
+        #df.to_pickle(path)
+        df_v=vaex.from_pandas(df)
+        #print(df_v.schema)
+        df_v.export_arrow(path)
 
 if __name__ == "__main__":
 
@@ -85,14 +92,14 @@ if __name__ == "__main__":
 
     client.amm.start()
 
-    datasets = glob.glob("data/clean/DOW/*")
+    datasets = glob.glob("data/clean/DOW/*events.arrow")
 
     print(len(datasets))
     t1 = time.time()
     print("Computing trade sign of", len(datasets), "datasets")
     all_promises=[]
     for dataset in datasets:
-        all_promises.append(load_and_compute_trade_sign(dataset))
+        all_promises.append(load_and_compute_trade_sign(dataset,True))
     dask.compute(all_promises, optimize_graph=False)
     t2 = time.time()
     print("Computation took", (t2-t1), "seconds")

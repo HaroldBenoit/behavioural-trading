@@ -11,7 +11,7 @@ from dask.distributed import Client
 
 if __name__ == "__main__":
 
-    ##client = Client(n_workers=6, threads_per_worker=2)
+    client = Client(n_workers=1, threads_per_worker=8)
 
     bbo_files=glob.glob("data/flash_crash_DJIA/US/bbo/*/*")
     trade_files=glob.glob("data/flash_crash_DJIA/US/trade/*/*")
