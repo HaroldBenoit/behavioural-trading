@@ -54,7 +54,7 @@ def compute_trade_sign(events:pd.DataFrame):
     uptick[uptick > 0.0] = True
     uptick[uptick < 0.0] = False
 
-    ## now that we have classified the upticks, if uptick = True and s=0.0 => it is a buy-trade, if uptick=False and s=0.0 => it is a sell-trade, if uptick = NaN and s=0.0 => take last trade classification
+    ## now that we have clbasassified the upticks, if uptick = True and s=0.0 => it is a buy-trade, if uptick=False and s=0.0 => it is a sell-trade, if uptick = NaN and s=0.0 => take last trade classification
 
     ## use ffill to take last trade classification
     events["uptick"] = uptick.ffill()
@@ -72,13 +72,18 @@ def compute_trade_sign(events:pd.DataFrame):
 
 @dask.delayed
 def load_and_compute_trade_sign(path):
+    print("Processing",path)
     df = vaex.open(path).to_pandas_df()
-    compute_trade_sign(df)
+    df = compute_trade_sign(df)
+    vaex.from_pandas(df, copy_index=True).export_arrow(path)
+    del df
+
 
 if __name__ == "__main__":
 
-    client = Client(n_workers = 5, threads_per_worker=2)
+    client = Client(n_workers = 1, threads_per_worker=4)
 
+    client.amm.start()
 
     datasets = glob.glob("data/clean/DOW/*")
 
@@ -87,10 +92,7 @@ if __name__ == "__main__":
     print("Computing trade sign of", len(datasets), "datasets")
     all_promises=[]
     for dataset in datasets:
-        print("Processing",dataset)
-       
-        
-        all_promises.append(compute_trade_sign(df))
-    all_promises = client.compute(all_promises)
+        all_promises.append(load_and_compute_trade_sign(dataset))
+    dask.compute(all_promises, optimize_graph=False)
     t2 = time.time()
     print("Computation took", (t2-t1), "seconds")
