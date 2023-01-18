@@ -114,6 +114,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="pipeline")
     parser.add_argument("--process", action="store_true")
     parser.add_argument('--plot_path', default="behavioural-trading/plots/")
+    parser.add_argument('--digit', type=int, default=-1)
     args = parser.parse_args()
 
     if args.process:
@@ -136,7 +137,7 @@ if __name__ == "__main__":
 
     datasets = glob.glob("data/clean/DOW/*events_w_s.arrow")
     ## RESPONSE FUNCTION
-    k=-1
+    k=args.digit
     for dataset in datasets:
         events = vaex.open(dataset).to_pandas_df()
         events["unit_digit"] = pd.Categorical(extract_digit(events, k=k))
