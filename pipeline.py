@@ -13,6 +13,8 @@ import argparse
 
 from utils import compute_R_fast
 
+import os.path as osp
+
 # from utils import compute_trade_sign
 
 
@@ -111,6 +113,7 @@ if __name__ == "__main__":
     ## Init
     parser = argparse.ArgumentParser(prog="pipeline")
     parser.add_argument("--process", action="store_true")
+    parser.add_argument('--plot_path', default="behavioural-trading/plots/")
     args = parser.parse_args()
 
     if args.process:
@@ -145,12 +148,19 @@ if __name__ == "__main__":
 
         response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
 
+        
 
         f,a = plt.subplots(5,2, figsize=(30,15), dpi=200)
 
         ticker = re.search(".*\/(.*)\-events.*", dataset).groups(0)[0]
         for i,ax in zip(range(10),a.flatten()):
             #re.match("/(.*)-events*", dataset)[0]
-            response_functions.iloc[:,0+i::10].plot(ax=ax)
-            f.suptitle(f"{ticker} unit digit response function")
-        plt.savefig(f"behavioural-trading/plots/{ticker}-{k}th-digit-response.png")
+            #print(response_functions.iloc[:,0+i::10])
+            curr_response = response_functions.iloc[:,0+i::10]
+            if not(curr_response.empty):
+                curr_response.plot(ax=ax)
+                
+        f.suptitle(f"{ticker} unit digit response function")
+            
+        plot_path = osp.join(args.plot_path,f"{ticker}-{k}th-digit-response.png")
+        plt.savefig(plot_path)
