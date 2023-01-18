@@ -1,5 +1,5 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 from scipy.signal import convolve
 
 
@@ -14,16 +14,13 @@ def compute_R(events, tau_max=1000, dtau=1):
     return np.array(R)
 
 
-
-
 def compute_R_fast(events: pd.DataFrame, tau_max=1000):
-    #R definition is R(tau) = E[s_n(M_{n+tau} -M_n) ]
+    # R definition is R(tau) = E[s_n(M_{n+tau} -M_n) ]
 
     s = events["s"]
     mid = events["mid"]
 
-    N=len(mid)
-
+    N = len(mid)
 
     ## we can move out demeaning factor out of the response function equation
     ## just need to make sure we have the right amount of corresponding s*mid in the expected value =>
@@ -32,43 +29,40 @@ def compute_R_fast(events: pd.DataFrame, tau_max=1000):
     # the last term in mid will contribute only once (for the tau=0 computation)
     # and the first term in mid will contribute to all computations
 
-    demean_const = np.cumsum((s*mid))[::-1]
+    demean_const = np.cumsum((s * mid))[::-1]
     ## number of terms used for each tau, to normalize correctly the expected value computation
-    division_const= np.array([i for i in range(1,N+1)])[::-1]
+    division_const = np.array([i for i in range(1, N + 1)])[::-1]
 
-
-    ## as we're taking the expected value, 
-    #the number of factors inside the expectation decreases linearly as the shift increases.
+    ## as we're taking the expected value,
+    # the number of factors inside the expectation decreases linearly as the shift increases.
     # The most extreme example being the biggest shift where only one element contributes
 
-    middle = N-1
+    middle = N - 1
 
     ## need to reverse mid as we want cross-correlation and not convolution
-    conv = convolve(s,mid[::-1])
+    conv = convolve(s, mid[::-1])
 
     ## we want only want half of the convolution and in causal order, thus we take first half and reverse
-    conv = conv[:middle+1][::-1]
+    conv = conv[: middle + 1][::-1]
 
-    #print("conv",conv)
-    #print()
-    #print("s*mid ",s*mid)
-    #print()
-    #print("demean", demean_const)
+    # print("conv",conv)
+    # print()
+    # print("s*mid ",s*mid)
+    # print()
+    # print("demean", demean_const)
 
-    response_function = (conv- demean_const)/division_const
-    #print()
-    #print("response", response_function)
-    
+    response_function = (conv - demean_const) / division_const
+    # print()
+    # print("response", response_function)
+
     cutoff = min(len(response_function), tau_max)
-    
+
     return np.array(response_function[:cutoff].values)
 
 
-
-
-def compute_trade_sign(events:pd.DataFrame):
-    """ Computes the sign of a trade for each trade in a intraday trade dataframe. The sign of a trade represents whether the trade was buy-initiated or sell-initiated.
-        Trade sign is defined as: 
+def compute_trade_sign(events: pd.DataFrame):
+    """Computes the sign of a trade for each trade in a intraday trade dataframe. The sign of a trade represents whether the trade was buy-initiated or sell-initiated.
+        Trade sign is defined as:
         1. if trade price above mid-price => buy
         2. if trade price below mid-price => sell
         3. if trade price equal to mid-price => apply tick-test
