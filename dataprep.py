@@ -8,9 +8,13 @@ import numpy as np
 import pandas as pd
 import vaex
 from dask.distributed import Client
+import argparse
 
 if __name__ == "__main__":
 
+    #parser = argparse.ArgumentParser(prog="dataprep")
+    #parser.add_argument('')
+    
     client = Client(n_workers=1, threads_per_worker=8)
 
     bbo_files=glob.glob("data/flash_crash_DJIA/US/bbo/*/*")
@@ -27,6 +31,8 @@ if __name__ == "__main__":
     paths["date"] = paths.apply(lambda x: re.match(f".*\/(.*)-{x['ticker']}.*", x["BBO_file"]).groups()[0], axis=1)
 
     #for ticker in ["RTX"]:
+    
+    print(paths["ticker"])
 
     for ticker in paths["ticker"].unique():
         if ticker not in ["HD", "RTX", "WBA"]:
