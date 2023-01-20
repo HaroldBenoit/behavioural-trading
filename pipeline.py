@@ -10,6 +10,7 @@ import pyarrow.parquet as pq
 import vaex
 from dask.distributed import Client
 import argparse
+import os
 
 from utils import compute_R_fast
 
@@ -111,10 +112,12 @@ def load_and_compute_trade_sign(path, save=False):
 if __name__ == "__main__":
 
     ## Init
-    parser = argparse.ArgumentParser(prog="pipeline")
-    parser.add_argument("--process", action="store_true")
-    parser.add_argument('--plot_path', default="behavioural-trading/plots/")
-    parser.add_argument('--digit', type=int, default=-1)
+    parser = argparse.ArgumentParser(prog="Python script to compute digit response functions on the DOW Jones")
+    parser.add_argument("--process", action="store_true", help="If flag specified, the raw data needs to be processed into clean data")
+    parser.add_argument('--plot_path', default="behavioural-trading/plots/", help="Absolute or relative path to appropriate folder to store the resulting plots")
+    parser.add_argument('--digit', type=int, default=-1, help="Digit of the price to extract, here the unit has index 0, the first decimal has index 1 and the tends digits has index -1.")
+    parser.add_argument('--tau_max', type=int, default=1000,help="How many shifts we compute for the response function")
+    parser.add_argument('--freq', default=None,help="If argumnent given, it specifies that we want to use physical time scale instead of trade time scale, and it specifies the frequency or precision .e.g 1s, 2s, 1min, 2min ")
     args = parser.parse_args()
 
     if args.process:
@@ -142,9 +145,22 @@ if __name__ == "__main__":
         events = vaex.open(dataset).to_pandas_df()
         events["unit_digit"] = pd.Categorical(extract_digit(events, k=k))
         events["trade_sign"] = pd.Categorical(events["s"].apply(lambda x : "BUY" if x == 1 else "SELL"))
+        events.set_index("index",inplace=True)
+        
+        #computing statstics before modifying events because of physical time scale
+        mean, min, max, total_volume = events.mid.mean(), events.mid.min(), events.mid.max(), events.trade_volume.sum()
+
+        ## enter if loop if we're using physical time scale
+        if args.freq is not None:
+            events = events.groupby(pd.Grouper(freq=args.freq)).last()
+            events.loc[events.mid.isna(), 'mid']  = 0.0
+            events.loc[events.s.isna(),'s'] = 0.0
+            # when considering a precision of, for example 1 second, we consider the correct midprice to be the last one
+            # if during a time step, no trade occured, we act as if the trade sign is equal to zero i.e. no influence on the response function 
+            # (taken from paper "Price response functions and spread impact in correlated financial markets" https://arxiv.org/pdf/2010.15105.pdf)
 
         response_functions = events.groupby(["trade_sign", "unit_digit"]).apply(
-            lambda x: compute_R_fast(x, tau_max=1000)
+            lambda x: compute_R_fast(x, tau_max=args.tau_max)
         )
 
         response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
@@ -154,14 +170,36 @@ if __name__ == "__main__":
         f,a = plt.subplots(5,2, figsize=(30,15), dpi=200)
 
         ticker = re.search(".*\/(.*)\-events.*", dataset).groups(0)[0]
+        print(f"Plotting ticker: {ticker}")
         for i,ax in zip(range(10),a.flatten()):
             #re.match("/(.*)-events*", dataset)[0]
             #print(response_functions.iloc[:,0+i::10])
             curr_response = response_functions.iloc[:,0+i::10]
             if not(curr_response.empty):
                 curr_response.plot(ax=ax)
-                
-        f.suptitle(f"{ticker} unit digit response function")
+        
+        timescale = "Trade" if args.freq is None else f"Freq {args.freq}"
+        
+        if k == -1:
+            digit_string = "Tens digit"
+        elif k == 0:
+            digit_string = "Unit digit"
+        elif k ==1:
+            digit_string = "1st decimal"
+        elif k==2:
+            digit_string= "2nd decimal"
+        elif k == 3:
+            digit_string= "3rd decimal"
+        elif k > 3:
+            digit_string= f"{k}th decimal"
             
-        plot_path = osp.join(args.plot_path,f"{ticker}-{k}th-digit-response.png")
+            
+        
+        
+        plot_title = f"{ticker} {digit_string} response function - Timescale: {timescale} - Price summary mean:{mean:.3f}, min:{min:.3f}, max: {max:.3f}, Tot. volume: {total_volume:.2E}"
+        f.suptitle(plot_title)
+        
+            
+        plot_path = osp.join(args.plot_path,f"{ticker}",f"{timescale}-{ticker}-{k}th-digit-response.png")
+        os.makedirs(osp.join(args.plot_path,f"{ticker}"), exist_ok=True)
         plt.savefig(plot_path)
