@@ -16,6 +16,9 @@ def compute_R(events, tau_max=1000, dtau=1):
 
 def compute_R_fast(events: pd.DataFrame, tau_max=1000):
     # R definition is R(tau) = E[s_n(M_{n+tau} -M_n) ]
+    
+    if len(events) == 0:
+        return np.full(tau_max, np.nan)
 
     s = events["s"]
     mid = events["mid"]
@@ -58,6 +61,27 @@ def compute_R_fast(events: pd.DataFrame, tau_max=1000):
     cutoff = min(len(response_function), tau_max)
 
     return np.array(response_function[:cutoff].values)
+
+
+
+def compute_R_over_time(events: pd.DataFrame, tau_max=1000):
+       
+    ## computing for each day, make sure to drop the nan days as there are only 252 trading days
+    responses = events.groupby(pd.Grouper(freq="1D", origin='start_day')).apply(lambda x: compute_R_fast(x, tau_max=tau_max))
+    
+    #keeping only trading days
+    
+    trading_days = events.index.day_of_year.drop_duplicates()
+    trading_days_mask = np.isin(responses.index.day_of_year.to_numpy(), trading_days)
+
+    responses = responses.iloc[trading_days_mask]
+    
+    max_len = responses.apply(lambda x: len(x)).max()
+    
+    ## we pad every trading day response function up to max_len viewed (usually equal to tau_max)
+    final_response = np.nanmean(np.array([np.pad(a, (0,max_len-a.shape[0]) , mode='constant', constant_values=np.nan) for a in responses.to_numpy()]),axis=0)
+    
+    return final_response
 
 
 def compute_trade_sign(events: pd.DataFrame):

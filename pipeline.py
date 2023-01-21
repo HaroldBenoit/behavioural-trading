@@ -12,7 +12,7 @@ from dask.distributed import Client
 import argparse
 import os
 
-from utils import compute_R_fast
+from utils import compute_R_over_time
 
 import os.path as osp
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
             # (taken from paper "Price response functions and spread impact in correlated financial markets" https://arxiv.org/pdf/2010.15105.pdf)
 
         response_functions = events.groupby(["trade_sign", "unit_digit"]).apply(
-            lambda x: compute_R_fast(x, tau_max=args.tau_max)
+            lambda x: compute_R_over_time(x, tau_max=args.tau_max)
         )
 
         response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
