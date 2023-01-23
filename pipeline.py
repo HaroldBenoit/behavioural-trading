@@ -63,7 +63,7 @@ def compute_trade_sign(events: pd.DataFrame):
     uptick[uptick > 0.0] = True
     uptick[uptick < 0.0] = False
 
-    ## now that we have clbasassified the upticks, if uptick = True and s=0.0 => it is a buy-trade, if uptick=False and s=0.0 => it is a sell-trade, if uptick = NaN and s=0.0 => take last trade classification
+    ## now that we have clasassified the upticks, if uptick = True and s=0.0 => it is a buy-trade, if uptick=False and s=0.0 => it is a sell-trade, if uptick = NaN and s=0.0 => take last trade classification
 
     ## use ffill to take last trade classification
     events["uptick"] = uptick.ffill()
@@ -106,7 +106,48 @@ def load_and_compute_trade_sign(path, save=False):
         # df.to_pickle(path)
         df_v = vaex.from_pandas(df)
         # print(df_v.schema)
+        print("Saving to " +path)
         df_v.export_arrow(path)
+
+
+def plot_response_functions(response_functions, ticker, plot_path, freq = None, month=None, quarter = None):
+    response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
+
+    f,a = plt.subplots(5,2, figsize=(30,15), dpi=200)
+
+    print(response_functions.shape)
+    print(f"Plotting ticker: {ticker}")
+    for i,ax in zip(range(10),a.flatten()):
+        #re.match("/(.*)-events*", dataset)[0]
+        #print(response_functions.iloc[:,0+i::10])
+        curr_response = response_functions.iloc[:,0+i::10]
+        if not(curr_response.empty):
+            curr_response.plot(ax=ax)
+    
+    timescale = "Trade" if freq is None else f"Freq {args.freq}"        
+    if k == -1:
+        digit_string = "Tens digit"
+    elif k == 0:
+        digit_string = "Unit digit"
+    elif k ==1:
+        digit_string = "1st decimal"
+    elif k==2:
+        digit_string= "2nd decimal"
+    elif k == 3:
+        digit_string= "3rd decimal"
+    elif k > 3:
+        digit_string= f"{k}th decimal"
+        
+    
+    averaging_window = "Month" if month else f"Q{q}" if quarter else "Yearly"
+    
+    plot_title = f" {averaging_window} {ticker} {digit_string} response function - Timescale: {timescale} - Price summary mean:{mean:.3f}, min:{min:.3f}, max: {max:.3f}, Tot. volume: {total_volume:.2E}"
+    f.suptitle(plot_title)
+    
+       
+    os.makedirs(plot_path, exist_ok=True)
+    plot_path = osp.join(plot_path, f"{averaging_window} {timescale}-{ticker}-{k}th-digit-response.png")
+    plt.savefig(plot_path)
 
 
 if __name__ == "__main__":
@@ -117,7 +158,10 @@ if __name__ == "__main__":
     parser.add_argument('--plot_path', default="behavioural-trading/plots/", help="Absolute or relative path to appropriate folder to store the resulting plots")
     parser.add_argument('--digit', type=int, default=-1, help="Digit of the price to extract, here the unit has index 0, the first decimal has index 1 and the tends digits has index -1.")
     parser.add_argument('--tau_max', type=int, default=1000,help="How many shifts we compute for the response function")
-    parser.add_argument('--freq', default=None,help="If argumnent given, it specifies that we want to use physical time scale instead of trade time scale, and it specifies the frequency or precision .e.g 1s, 2s, 1min, 2min ")
+    parser.add_argument('--freq', default=None,help="If argument given, it specifies that we want to use physical time scale instead of trade time scale, and it specifies the frequency or precision .e.g 1s, 2s, 1min, 2min ")
+    parser.add_argument('--monthly', action="store_true", help="If argument given, the script will compute the and plot the response function for each month in the year")
+    parser.add_argument('--quarterly', action="store_true", help="If argument given, the script will compute the and plot the response function for each quarter in the year")
+
     args = parser.parse_args()
 
     if args.process:
@@ -133,7 +177,7 @@ if __name__ == "__main__":
         print("Computing trade sign of", len(datasets), "datasets")
         all_promises = []
         for dataset in datasets:
-            all_promises.append(load_and_compute_trade_sign(dataset, False))
+            all_promises.append(load_and_compute_trade_sign(dataset, True))
         dask.compute(all_promises, optimize_graph=False)
         t2 = time.time()
         print("Computation took", (t2 - t1), "seconds")
@@ -146,6 +190,7 @@ if __name__ == "__main__":
         events["unit_digit"] = pd.Categorical(extract_digit(events, k=k))
         events["trade_sign"] = pd.Categorical(events["s"].apply(lambda x : "BUY" if x == 1 else "SELL"))
         events.set_index("index",inplace=True)
+        events["month"] = events.index.month
         
         #computing statstics before modifying events because of physical time scale
         mean, min, max, total_volume = events.mid.mean(), events.mid.min(), events.mid.max(), events.trade_volume.sum()
@@ -158,48 +203,42 @@ if __name__ == "__main__":
             # when considering a precision of, for example 1 second, we consider the correct midprice to be the last one
             # if during a time step, no trade occured, we act as if the trade sign is equal to zero i.e. no influence on the response function 
             # (taken from paper "Price response functions and spread impact in correlated financial markets" https://arxiv.org/pdf/2010.15105.pdf)
-
-        response_functions = events.groupby(["trade_sign", "unit_digit"]).apply(
-            lambda x: compute_R_over_time(x, tau_max=args.tau_max)
-        )
-
-        response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
-
         
-
-        f,a = plt.subplots(5,2, figsize=(30,15), dpi=200)
-
         ticker = re.search(".*\/(.*)\-events.*", dataset).groups(0)[0]
-        print(f"Plotting ticker: {ticker}")
-        for i,ax in zip(range(10),a.flatten()):
-            #re.match("/(.*)-events*", dataset)[0]
-            #print(response_functions.iloc[:,0+i::10])
-            curr_response = response_functions.iloc[:,0+i::10]
-            if not(curr_response.empty):
-                curr_response.plot(ax=ax)
+
+        if args.monthly:
+            events["month"] = pd.Categorical(events.month)
+
+            for m in events.month.unique():
+                response_functions = events[events.quarter==m].groupby(["trade_sign", "unit_digit"]).apply(
+                    lambda x: compute_R_over_time(x, tau_max=args.tau_max)
+                ) 
+                plot_response_functions(
+                    response_functions, 
+                    ticker, 
+                    plot_path = osp.join(args.plot_path,f"{ticker}", f"M{m}"), 
+                    freq = args.freq, 
+                    month = m,
+                    )
+        elif args.quarterly:
+            events["quarter"]=pd.Categorical(((events["month"]-1)/3+1).astype(int))
+            for q in events.quarter.unique():
+                response_functions = events[events.quarter==q].groupby(["trade_sign", "unit_digit"]).apply(
+                    lambda x: compute_R_over_time(x, tau_max=args.tau_max)
+                ) 
+                plot_response_functions(
+                    response_functions, 
+                    ticker, 
+                    plot_path = osp.join(args.plot_path,f"{ticker}", f"Q{q}"), 
+                    freq = args.freq, 
+                    quarter = q
+                    )
+
+        else :
+            response_functions = events.groupby(["trade_sign", "unit_digit"]).apply(
+                lambda x: compute_R_over_time(x, tau_max=args.tau_max)
+            )
+            plot_response_functions(response_functions, ticker, args.plot_path, args.freq)
+
+
         
-        timescale = "Trade" if args.freq is None else f"Freq {args.freq}"
-        
-        if k == -1:
-            digit_string = "Tens digit"
-        elif k == 0:
-            digit_string = "Unit digit"
-        elif k ==1:
-            digit_string = "1st decimal"
-        elif k==2:
-            digit_string= "2nd decimal"
-        elif k == 3:
-            digit_string= "3rd decimal"
-        elif k > 3:
-            digit_string= f"{k}th decimal"
-            
-            
-        
-        
-        plot_title = f"{ticker} {digit_string} response function - Timescale: {timescale} - Price summary mean:{mean:.3f}, min:{min:.3f}, max: {max:.3f}, Tot. volume: {total_volume:.2E}"
-        f.suptitle(plot_title)
-        
-            
-        plot_path = osp.join(args.plot_path,f"{ticker}",f"{timescale}-{ticker}-{k}th-digit-response.png")
-        os.makedirs(osp.join(args.plot_path,f"{ticker}"), exist_ok=True)
-        plt.savefig(plot_path)
