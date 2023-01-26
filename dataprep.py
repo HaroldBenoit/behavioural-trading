@@ -64,5 +64,8 @@ if __name__ == "__main__":
             events.export_arrow(fileSave)
         else:
             print(f"skipping {ticker}")
+            
+            
+    dataprep_utils.compute_trade_sign_all_datasets()
 
     print("finished")

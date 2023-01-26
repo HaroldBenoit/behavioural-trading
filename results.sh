@@ -1,12 +1,19 @@
 
 
 
+for digit in 0 1 2 3
+
+do
+    python3 pipeline.py --plot_path plots/ --digit $digit --tau_max 400 
+
+done
+
 
 
 for digit in 0 1 2 3
 
 do
-    python3 pipeline.py --plot_path plots/ --digit $digit --tau_max 600 --quarterly
+    python3 pipeline.py --plot_path plots/ --digit $digit --tau_max 400 --quarterly
 
 done
 
