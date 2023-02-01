@@ -12,6 +12,9 @@ from dask.distributed import Client
 import argparse
 import os
 
+from functools import reduce
+
+
 from utils import compute_R_over_time
 
 import os.path as osp
@@ -41,10 +44,10 @@ def extract_digit(df, k=0):
 
         
 
-def plot_response_functions(response_functions, ticker, plot_path, freq = None, month=None, quarter = None):
+def plot_response_functions(response_functions, ticker, plot_path, freq = None, month=None, quarter = None, total = False):
     response_functions = pd.pivot_table(response_functions.apply(pd.Series), columns=response_functions.index)
 
-    f,a = plt.subplots(5,2, figsize=(30,15), dpi=200)
+    f,a = plt.subplots(5,2, figsize=(15,30), dpi=200)
 
     print(response_functions.shape)
     print(f"Plotting ticker: {ticker}")
@@ -73,12 +76,22 @@ def plot_response_functions(response_functions, ticker, plot_path, freq = None, 
     averaging_window = "Month" if month else f"Q{q}" if quarter else "Yearly"
     
     plot_title = f" {averaging_window} {ticker} {digit_string} response function - Timescale: {timescale} - Price summary mean:{mean:.3f}, min:{min:.3f}, max: {max:.3f}, Tot. volume: {total_volume:.2E}"
+    
+    # average over all tickers
+    if total:
+        plot_title = f" {averaging_window} {digit_string} response function over all DOW - Timescale: {timescale}"
+    
     f.suptitle(plot_title)
     
        
     os.makedirs(plot_path, exist_ok=True)
-    plot_path = osp.join(plot_path, f"{averaging_window} {timescale}-{ticker}-{k}th-digit-response.png")
-    plt.savefig(plot_path)
+    if not total:
+        plot_path = osp.join(plot_path, f"{averaging_window} {timescale}-{ticker}-{k}th-digit-response.png")
+    else:
+        plot_path = osp.join(plot_path, f"Total-{averaging_window}-{timescale}--{k}th-digit-response.png")
+
+    
+    plt.savefig(plot_path, bbox_inches='tight')
 
 
 if __name__ == "__main__":
@@ -96,7 +109,11 @@ if __name__ == "__main__":
 
     datasets = glob.glob("data/clean/DOW/*events_w_s.arrow")
     ## RESPONSE FUNCTION
+    
+    
     k=args.digit
+    all_response_functions = []
+    
     for dataset in datasets:
         events = vaex.open(dataset).to_pandas_df()
         events["unit_digit"] = pd.Categorical(extract_digit(events, k=k))
@@ -152,6 +169,19 @@ if __name__ == "__main__":
             )
             plot_path = osp.join(args.plot_path, f"{ticker}", "yearly")
             plot_response_functions(response_functions, ticker, plot_path, args.freq)
+            
+            ## we standardize by mean mid price
+            all_response_functions.append(response_functions / mean)
+            
+            
+    if len(all_response_functions) > 0:
+            
+        all_response_functions = reduce(lambda a,b: a +b, all_response_functions) / len(response_functions)
+        
+        plot_path = osp.join(args.plot_path)
+        
+        plot_response_functions(all_response_functions, ticker="", plot_path=plot_path, freq= args.freq, total=True)
+
 
 
         
