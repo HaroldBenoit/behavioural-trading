@@ -15,32 +15,11 @@ import os
 from functools import reduce
 
 
-from utils import compute_R_over_time
+from utils import compute_R_correctly, compute_R_over_time_correctly
 
 import os.path as osp
 
 # from utils import compute_trade_sign
-
-
-
-
-def extract_digit(df, k=0):
-    """Extract the k_th digit of the trade price, where the unit has index 0, the first decimal has index 1 and the tends digits has index -1.
-
-    Args:
-        df (pd.Dataframe): Events dataframe with trade_price as a column
-        k (int, optional): Defaults to 0, for the unit digit.
-
-    Returns:
-        pd.Series: Series mapping each trade price to its k-th digit
-    """
-
-    return ((10**k) * df.trade_price).astype(int) % 10
-
-
-
-        
-
 
         
 
@@ -116,8 +95,6 @@ if __name__ == "__main__":
     
     for dataset in datasets:
         events = vaex.open(dataset).to_pandas_df()
-        events["unit_digit"] = pd.Categorical(extract_digit(events, k=k))
-        events["trade_sign"] = pd.Categorical(events["s"].apply(lambda x : "BUY" if x == 1 else "SELL"))
         events.set_index("index",inplace=True)
         events["month"] = events.index.month
         
@@ -139,9 +116,7 @@ if __name__ == "__main__":
             events["month"] = pd.Categorical(events.month)
 
             for m in events.month.unique():
-                response_functions = events[events.quarter==m].groupby(["trade_sign", "unit_digit"]).apply(
-                    lambda x: compute_R_over_time(x, tau_max=args.tau_max)
-                ) 
+                response_functions = compute_R_over_time_correctly(events[events.month==m],  k=k, tau_max=args.tau_max)
                 plot_response_functions(
                     response_functions, 
                     ticker, 
@@ -152,9 +127,7 @@ if __name__ == "__main__":
         elif args.quarterly:
             events["quarter"]=pd.Categorical(((events["month"]-1)/3+1).astype(int))
             for q in events.quarter.unique():
-                response_functions = events[events.quarter==q].groupby(["trade_sign", "unit_digit"]).apply(
-                    lambda x: compute_R_over_time(x, tau_max=args.tau_max)
-                ) 
+                response_functions = compute_R_over_time_correctly(events[events.quarter==q],  k=k, tau_max=args.tau_max)
                 plot_response_functions(
                     response_functions, 
                     ticker, 
@@ -164,9 +137,7 @@ if __name__ == "__main__":
                     )
 
         else :
-            response_functions = events.groupby(["trade_sign", "unit_digit"]).apply(
-                lambda x: compute_R_over_time(x, tau_max=args.tau_max)
-            )
+            response_functions = compute_R_over_time_correctly(events=events, k=k, tau_max=args.tau_max)
             plot_path = osp.join(args.plot_path, f"{ticker}", "yearly")
             plot_response_functions(response_functions, ticker, plot_path, args.freq)
             

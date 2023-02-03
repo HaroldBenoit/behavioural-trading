@@ -1,6 +1,24 @@
 import numpy as np
 import pandas as pd
 from scipy.signal import convolve
+import dask
+from dask.distributed import Client
+
+from functools import reduce
+
+
+def extract_digit(df, k=0):
+    """Extract the k_th digit of the trade price, where the unit has index 0, the first decimal has index 1 and the tends digits has index -1.
+
+    Args:
+        df (pd.Dataframe): Events dataframe with trade_price as a column
+        k (int, optional): Defaults to 0, for the unit digit.
+
+    Returns:
+        pd.Series: Series mapping each trade price to its k-th digit
+    """
+
+    return ((10**k) * df.trade_price).astype(int) % 10
 
 
 def compute_R(events, tau_max=1000, dtau=1):
@@ -62,6 +80,75 @@ def compute_R_fast(events: pd.DataFrame, tau_max=1000):
 
     return np.array(response_function[:cutoff].values)
 
+
+@dask.delayed
+def compute_R_correctly(events: pd.DataFrame, k:int, tau_max:int=1000):
+    
+    num_trades = len(events)
+    
+    digits = extract_digit(events,k=k)
+    
+    order_types = events["s"].apply(lambda x : "BUY" if x == 1 else "SELL")
+    
+    digits_response ={"BUY":[np.zeros(tau_max) for i in range(10)], "SELL":[np.zeros(tau_max) for i in range(10)]}
+    
+    digits_num_appearance = {"BUY":[0 for i in range(10)], "SELL":[0 for i in range(10)]}
+     
+    
+    
+    for i in range(num_trades - tau_max):
+                
+        window = events.iloc[i:i + tau_max]
+        
+        digit = digits[i]
+        order_type = order_types[i]
+        
+        ## count num appearance
+        
+        digits_num_appearance[order_type][digit] = digits_num_appearance[order_type][digit] + 1
+        
+        ## computing contribution to response
+        curr_mid_price = events.iloc[i].mid
+        response = (window.s *(window.mid - curr_mid_price)).to_numpy()
+        
+        digits_response[order_type][digit] = digits_response[order_type][digit] + response
+    
+    
+    ## averaging things out 
+    
+    all_responses=[]
+    for order_type in ["BUY", "SELL"]:
+        for i in range(10):
+            if  digits_num_appearance[order_type][i] > 0: 
+                avg_response = digits_response[order_type][i]/ digits_num_appearance[order_type][i]
+            else:
+                avg_response = np.zeros(tau_max)
+            
+            all_responses.append(avg_response)
+            
+    
+    index = pd.MultiIndex.from_product([["BUY","SELL"],list(range(10))], names=["trade_sign", "digit"])
+
+    return pd.Series(all_responses,index=index)
+    
+
+
+def compute_R_over_time_correctly(events: pd.DataFrame, k:int, tau_max:int=1000):
+    
+    client = Client(n_workers=1, threads_per_worker=8)
+    
+    promises = []
+    
+    for day in events.index.day_of_year.unique():
+        
+        curr_events = events.iloc[events.index.day_of_year == day]
+        promises.append(compute_R_correctly(curr_events,k=k,tau_max=tau_max))
+        
+    response_functions_all_days = dask.compute(promises)[0]
+    
+    response_functions = reduce(lambda a,b: a +b, response_functions_all_days) / len(response_functions_all_days)
+
+    return response_functions
 
 
 def compute_R_over_time(events: pd.DataFrame, tau_max=1000):
