@@ -137,7 +137,14 @@ if __name__ == "__main__":
                     )
 
         else :
-            response_functions = compute_R_over_time_correctly(events=events, k=k, tau_max=args.tau_max)
+            pathname = f"data/clean/{ticker}_response_yearly.pkl"
+            
+            if osp.exists(pathname):
+                response_functions = pd.read_pickle(pathname)
+            else:
+                response_functions = compute_R_over_time_correctly(events=events, k=k, tau_max=args.tau_max)
+                response_functions.to_pickle(pathname)
+                
             plot_path = osp.join(args.plot_path, f"{ticker}", "yearly")
             plot_response_functions(response_functions, ticker, plot_path, args.freq)
             
