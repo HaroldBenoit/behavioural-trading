@@ -109,8 +109,10 @@ def compute_R_correctly(events: pd.DataFrame, k:int, tau_max:int=1000):
         
         ## computing contribution to response
         curr_mid_price = events.iloc[i].mid
-        response = (window.s *(window.mid - curr_mid_price)).to_numpy()
+        curr_trade_sign = events.iloc[i].s
+        response = (curr_trade_sign *(window.mid - curr_mid_price)).to_numpy()
         
+        ## updating by summing
         digits_response[order_type][digit] = digits_response[order_type][digit] + response
     
     
@@ -126,7 +128,7 @@ def compute_R_correctly(events: pd.DataFrame, k:int, tau_max:int=1000):
             
             all_responses.append(avg_response)
             
-    
+    ## making multiindex to make dataframe
     index = pd.MultiIndex.from_product([["BUY","SELL"],list(range(10))], names=["trade_sign", "digit"])
 
     return pd.Series(all_responses,index=index)
