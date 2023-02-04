@@ -137,7 +137,7 @@ if __name__ == "__main__":
                     )
 
         else :
-            pathname = f"data/clean/{ticker}_response_yearly.pkl"
+            pathname = f"data/clean/DOW/{ticker}_digit_{k}_tau_max_{args.tau_max}_response_yearly.pkl"
             
             if osp.exists(pathname):
                 response_functions = pd.read_pickle(pathname)

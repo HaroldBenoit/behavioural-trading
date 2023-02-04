@@ -9,6 +9,7 @@ __pycache__/
 data/
 dask-worker-space/
 plots/
+new_plots/
 # Distribution / packaging
 .Python
 build/
